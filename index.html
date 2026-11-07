@@ -1,0 +1,3121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Loop Recall: The Lost Facility</title>
+    <meta name="description" content="A cinematic 3D first-person horror exploration game set in an abandoned underground research facility. Features procedural audio, intelligent monster AI, mobile controls, and immersive storytelling." />
+    <meta property="og:title" content="Loop Recall: The Lost Facility" />
+    <meta property="og:description" content="A cinematic 3D first-person horror exploration game set in an abandoned underground research facility. Features procedural audio, intelligent monster AI, mobile controls, and immersive storytelling." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Three.js CDN (r128) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+      :root {
+        --color-bg: #07090b;
+        --color-panel: rgba(12, 16, 20, 0.94);
+        --color-panel-border: rgba(56, 70, 80, 0.5);
+        --color-accent: #22d3ee;
+        --color-danger: #ef4444;
+        --color-warning: #f59e0b;
+        --color-success: #10b981;
+        --color-text: #e2e8f0;
+        --color-text-dim: #94a3b8;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+      }
+
+      html, body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: var(--color-bg);
+        color: var(--color-text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        touch-action: none;
+      }
+
+      #game-container {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      canvas#webgl-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        z-index: 1;
+      }
+
+      /* Post-processing screen effects via CSS overlays */
+      #vignette-overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 2;
+        background: radial-gradient(circle at center, transparent 45%, rgba(0,0,0,0.85) 100%);
+      }
+
+      #damage-flash {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 3;
+        background: radial-gradient(circle at center, rgba(239, 68, 68, 0.1) 20%, rgba(185, 28, 28, 0.75) 100%);
+        opacity: 0;
+        transition: opacity 0.12s ease-out;
+      }
+
+      #chase-distortion {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 3;
+        background: radial-gradient(circle at center, transparent 30%, rgba(185, 28, 28, 0.25) 100%);
+        opacity: 0;
+        mix-blend-mode: color-burn;
+        transition: opacity 0.3s ease;
+      }
+
+      #flashlight-glitch {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 4;
+        background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15) 0px, rgba(0,0,0,0.15) 2px, transparent 2px, transparent 4px);
+        opacity: 0;
+        transition: opacity 0.08s ease;
+      }
+
+      /* HUD Layer */
+      #hud-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        pointer-events: none;
+        display: none;
+      }
+
+      .hud-cluster-top-left {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .sector-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(10, 15, 20, 0.85);
+        border: 1px solid var(--color-panel-border);
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--color-accent);
+      }
+
+      .objective-card {
+        background: rgba(10, 15, 20, 0.85);
+        border: 1px solid rgba(56, 70, 80, 0.6);
+        border-left: 3px solid var(--color-accent);
+        padding: 8px 12px;
+        border-radius: 4px;
+        max-width: 320px;
+      }
+
+      .objective-label {
+        font-size: 9px;
+        color: var(--color-text-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 2px;
+      }
+
+      .objective-text {
+        font-size: 12px;
+        font-weight: 600;
+        color: #fff;
+        line-height: 1.3;
+      }
+
+      .hud-cluster-top-right {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        display: flex;
+        gap: 8px;
+        pointer-events: auto;
+      }
+
+      .hud-btn {
+        width: 38px;
+        height: 38px;
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid var(--color-panel-border);
+        border-radius: 6px;
+        color: var(--color-text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .hud-btn:hover {
+        background: rgba(30, 41, 59, 0.95);
+        border-color: var(--color-accent);
+      }
+
+      .hud-cluster-bottom-left {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 180px;
+      }
+
+      .stat-group {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .stat-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--color-text-dim);
+      }
+
+      .stat-bar-track {
+        width: 100%;
+        height: 6px;
+        background: rgba(30, 41, 59, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 2px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .stat-bar-fill {
+        height: 100%;
+        transition: width 0.15s ease;
+      }
+
+      .health-fill {
+        background: linear-gradient(90deg, #dc2626, #ef4444);
+      }
+
+      .stamina-fill {
+        background: linear-gradient(90deg, #0284c7, #38bdf8);
+      }
+
+      .battery-fill {
+        background: linear-gradient(90deg, #d97706, #fbbf24);
+      }
+
+      /* Crosshair & Interaction Prompt */
+      #crosshair {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 6px;
+        height: 6px;
+        background: rgba(255, 255, 255, 0.4);
+        border-radius: 50%;
+        pointer-events: none;
+        transition: transform 0.15s ease, background 0.15s ease;
+      }
+
+      #crosshair.active {
+        width: 10px;
+        height: 10px;
+        background: var(--color-accent);
+        box-shadow: 0 0 8px var(--color-accent);
+      }
+
+      #interaction-prompt {
+        position: absolute;
+        top: calc(50% + 28px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid var(--color-accent);
+        padding: 6px 14px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        color: #fff;
+        display: none;
+        align-items: center;
+        gap: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+        pointer-events: none;
+        white-space: nowrap;
+      }
+
+      .prompt-key {
+        background: var(--color-accent);
+        color: #000;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-weight: 700;
+        font-size: 10px;
+      }
+
+      /* Subtitles / Lore Notification */
+      #subtitle-box {
+        position: absolute;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(5, 8, 12, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 8px 18px;
+        border-radius: 4px;
+        font-size: 12px;
+        color: #cbd5e1;
+        max-width: 80%;
+        text-align: center;
+        display: none;
+        pointer-events: none;
+      }
+
+      /* Hiding indicator */
+      #hiding-banner {
+        position: absolute;
+        top: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid var(--color-warning);
+        color: var(--color-warning);
+        padding: 6px 16px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        display: none;
+      }
+
+      /* MOBILE TOUCH CONTROLS */
+      #mobile-controls {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        display: none;
+        z-index: 15;
+      }
+
+      @media (max-width: 900px), (hover: none) and (pointer: coarse) {
+        #mobile-controls {
+          display: block !important;
+        }
+        .hud-cluster-top-left {
+          top: 10px;
+          left: 10px;
+          max-width: calc(100vw - 140px);
+        }
+        .objective-card {
+          padding: 6px 10px;
+          max-width: 100%;
+        }
+        .objective-text {
+          font-size: 11px;
+        }
+        .hud-cluster-top-right {
+          top: 10px;
+          right: 10px;
+          gap: 6px;
+          z-index: 25; /* Higher than touch look zone */
+        }
+        .hud-btn {
+          width: 36px;
+          height: 36px;
+        }
+        .hud-cluster-bottom-left {
+          top: 85px;
+          bottom: auto;
+          left: 10px;
+          min-width: 130px;
+          background: rgba(10, 15, 20, 0.7);
+          padding: 6px 8px;
+          border-radius: 4px;
+          border: 1px solid rgba(56, 70, 80, 0.4);
+        }
+      }
+
+      .touch-zone-look {
+        position: absolute;
+        right: 0;
+        top: 60px;
+        width: 50%;
+        height: calc(100% - 180px);
+        pointer-events: auto;
+        touch-action: none;
+      }
+
+      .touch-joystick-base {
+        position: absolute;
+        bottom: 24px;
+        left: 20px;
+        width: 110px;
+        height: 110px;
+        border-radius: 50%;
+        background: rgba(15, 23, 42, 0.7);
+        border: 2px solid rgba(56, 189, 248, 0.3);
+        pointer-events: auto;
+        touch-action: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+      }
+
+      .touch-joystick-thumb {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: rgba(34, 211, 238, 0.5);
+        border: 2px solid var(--color-accent);
+        pointer-events: none;
+        transform: translate(0px, 0px);
+        transition: transform 0.04s ease-out;
+      }
+
+      .mobile-action-buttons {
+        position: absolute;
+        bottom: 20px;
+        right: 16px;
+        display: grid;
+        grid-template-columns: repeat(2, 54px);
+        gap: 10px;
+        pointer-events: auto;
+      }
+
+      .mobile-btn {
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1.5px solid rgba(255, 255, 255, 0.25);
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-size: 8px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        cursor: pointer;
+        touch-action: none;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+      }
+
+      .mobile-btn:active, .mobile-btn.active {
+        background: rgba(34, 211, 238, 0.3);
+        border-color: var(--color-accent);
+        transform: scale(0.94);
+      }
+
+      .mobile-btn.interact-btn {
+        background: rgba(34, 211, 238, 0.25);
+        border-color: var(--color-accent);
+      }
+
+      /* SCREENS & MODALS */
+      .modal-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 50;
+        background: rgba(5, 7, 10, 0.88);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .modal-card {
+        background: var(--color-panel);
+        border: 1px solid var(--color-panel-border);
+        border-radius: 8px;
+        padding: 24px;
+        max-width: 520px;
+        width: 100%;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+        pointer-events: auto;
+      }
+
+      .modal-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding-bottom: 10px;
+      }
+
+      .modal-body {
+        margin: 16px 0;
+        font-size: 13px;
+        color: var(--color-text-dim);
+        line-height: 1.5;
+      }
+
+      .modal-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        margin-top: 20px;
+      }
+
+      .btn {
+        padding: 10px 18px;
+        border-radius: 4px;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: all 0.15s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-primary {
+        background: var(--color-accent);
+        color: #000;
+      }
+
+      .btn-primary:hover {
+        background: #38bdf8;
+        box-shadow: 0 0 14px rgba(56, 189, 248, 0.4);
+      }
+
+      .btn-secondary {
+        background: rgba(30, 41, 59, 0.8);
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.15);
+      }
+
+      .btn-secondary:hover {
+        background: rgba(51, 65, 85, 0.9);
+        border-color: rgba(255, 255, 255, 0.3);
+      }
+
+      .btn-danger {
+        background: var(--color-danger);
+        color: #fff;
+      }
+
+      /* TITLE SCREEN */
+      #title-screen {
+        position: absolute;
+        inset: 0;
+        z-index: 60;
+        background: radial-gradient(circle at center, rgba(15, 23, 42, 0.6) 0%, rgba(5, 7, 10, 0.95) 85%);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 40px;
+        pointer-events: auto;
+      }
+
+      .title-brand {
+        max-width: 650px;
+      }
+
+      .title-kicker {
+        font-size: 11px;
+        letter-spacing: 0.25em;
+        text-transform: uppercase;
+        color: var(--color-accent);
+        margin-bottom: 8px;
+      }
+
+      .title-lockup {
+        width: 100%;
+        max-width: 580px;
+        height: auto;
+        margin-bottom: 12px;
+      }
+
+      .title-desc {
+        font-size: 13px;
+        color: var(--color-text-dim);
+        line-height: 1.6;
+        max-width: 480px;
+      }
+
+      .title-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        max-width: 240px;
+        margin: 24px 0;
+      }
+
+      .title-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 11px;
+        color: #64748b;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        padding-top: 16px;
+      }
+
+      /* INVENTORY UI */
+      .inventory-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 10px;
+        margin: 16px 0;
+      }
+
+      .inv-item-card {
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 6px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .inv-item-card:hover {
+        border-color: var(--color-accent);
+        background: rgba(30, 41, 59, 0.8);
+      }
+
+      .inv-item-icon {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .inv-item-name {
+        font-size: 11px;
+        font-weight: 600;
+        color: #fff;
+      }
+
+      .inv-item-count {
+        font-size: 10px;
+        color: var(--color-accent);
+      }
+
+      /* MAP OVERLAY */
+      .map-canvas-container {
+        width: 100%;
+        height: 280px;
+        background: #020406;
+        border: 1px solid rgba(34, 211, 238, 0.3);
+        border-radius: 4px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      canvas#facility-map-canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      /* SETTINGS FORM */
+      .settings-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
+
+      .settings-label {
+        font-size: 12px;
+        color: #e2e8f0;
+      }
+
+      select, input[type="range"] {
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid var(--color-panel-border);
+        color: #fff;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-family: inherit;
+        font-size: 12px;
+      }
+
+      /* DOCUMENT READER */
+      .doc-paper {
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-left: 4px solid var(--color-warning);
+        padding: 16px;
+        border-radius: 4px;
+        color: #e2e8f0;
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+
+      @media (max-width: 768px) {
+        #title-screen {
+          padding: 24px;
+        }
+        .title-brand {
+          max-width: 100%;
+        }
+        .title-desc {
+          font-size: 11px;
+        }
+        .hud-cluster-bottom-left {
+          bottom: 16px;
+          left: 16px;
+          min-width: 140px;
+        }
+      }
+    </style>
+  </head>
+  <body data-state="title">
+    <div id="game-container">
+      <!-- 3D Canvas -->
+      <canvas id="webgl-canvas"></canvas>
+
+      <!-- Post-processing and atmospheric overlays -->
+      <div id="vignette-overlay"></div>
+      <div id="damage-flash"></div>
+      <div id="chase-distortion"></div>
+      <div id="flashlight-glitch"></div>
+
+      <!-- HUD Layer (Active during 'playing') -->
+      <div id="hud-layer">
+        <!-- Top Left: Sector & Active Objective -->
+        <div class="hud-cluster-top-left">
+          <div class="sector-badge" id="hud-sector-badge">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+              <polyline points="2 17 12 22 22 17"></polyline>
+              <polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
+            <span id="sector-name-display">Sector 1: Reception</span>
+          </div>
+
+          <div class="objective-card">
+            <div class="objective-label">Active Directive</div>
+            <div class="objective-text" id="objective-text-display">Locate Security Keycard Alpha in the Administration Offices.</div>
+          </div>
+        </div>
+
+        <!-- Top Center: Hiding banner -->
+        <div id="hiding-banner">HIDDEN IN LOCKER - PRESS [E] TO EXIT</div>
+
+        <!-- Top Right: Inventory, Map, Flashlight status, Pause -->
+        <div class="hud-cluster-top-right">
+          <button class="hud-btn" id="btn-hud-map" title="Facility Map (M)" aria-label="Facility Map">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
+              <line x1="8" y1="2" x2="8" y2="18"></line>
+              <line x1="16" y1="6" x2="16" y2="22"></line>
+            </svg>
+          </button>
+          <button class="hud-btn" id="btn-hud-inventory" title="Inventory (TAB)" aria-label="Inventory">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+            </svg>
+          </button>
+          <button class="hud-btn" id="btn-hud-pause" title="System Menu (ESC)" aria-label="Pause Menu">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="6" y="4" width="4" height="16"></rect>
+              <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Bottom Left: Vitality, Stamina, Flashlight Battery Meters -->
+        <div class="hud-cluster-bottom-left">
+          <div class="stat-group">
+            <div class="stat-header">
+              <span>Vitality</span>
+              <span id="health-num">100%</span>
+            </div>
+            <div class="stat-bar-track">
+              <div class="stat-bar-fill health-fill" id="health-bar" style="width: 100%;"></div>
+            </div>
+          </div>
+
+          <div class="stat-group">
+            <div class="stat-header">
+              <span>Stamina</span>
+              <span id="stamina-num">100%</span>
+            </div>
+            <div class="stat-bar-track">
+              <div class="stat-bar-fill stamina-fill" id="stamina-bar" style="width: 100%;"></div>
+            </div>
+          </div>
+
+          <div class="stat-group">
+            <div class="stat-header">
+              <span>Torch Battery</span>
+              <span id="battery-num">100%</span>
+            </div>
+            <div class="stat-bar-track">
+              <div class="stat-bar-fill battery-fill" id="battery-bar" style="width: 100%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center Crosshair & Interactive Raycast Prompt -->
+        <div id="crosshair"></div>
+        <div id="interaction-prompt">
+          <span class="prompt-key">E</span>
+          <span id="prompt-action-text">INTERACT</span>
+        </div>
+
+        <!-- Subtitles / Feedback -->
+        <div id="subtitle-box"></div>
+
+        <!-- Mobile Touch Controls Overlay -->
+        <div id="mobile-controls">
+          <!-- Right side swipe look zone -->
+          <div class="touch-zone-look" id="touch-look-zone"></div>
+
+          <!-- Left side virtual joystick -->
+          <div class="touch-joystick-base" id="touch-joystick-zone">
+            <div class="touch-joystick-thumb" id="touch-joystick-thumb"></div>
+          </div>
+
+          <!-- Mobile Action Buttons -->
+          <div class="mobile-action-buttons">
+            <button class="mobile-btn" id="m-btn-flash">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18"></path>
+                <path d="M6 6l12 12"></path>
+              </svg>
+              <span>Torch</span>
+            </button>
+            <button class="mobile-btn interact-btn" id="m-btn-interact">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M12 8v8"></path>
+                <path d="M8 12h8"></path>
+              </svg>
+              <span>USE</span>
+            </button>
+            <button class="mobile-btn" id="m-btn-sprint">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+              <span>Sprint</span>
+            </button>
+            <button class="mobile-btn" id="m-btn-crouch">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 14l-7 7-7-7"></path>
+              </svg>
+              <span>Crouch</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TITLE SCREEN -->
+      <div id="title-screen">
+        <div class="title-brand">
+          <div class="title-kicker">CLASSIFIED RESEARCH COMPLEX 1984</div>
+          <!-- Bespoke SVG Title Lockup -->
+          <svg class="title-lockup" viewBox="0 0 540 85" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <text x="0" y="38" font-family="monospace" font-size="36" font-weight="900" fill="#22d3ee" letter-spacing="3">LOOP RECALL</text>
+            <text x="0" y="70" font-family="monospace" font-size="20" font-weight="700" fill="#94a3b8" letter-spacing="6">THE LOST FACILITY</text>
+            <line x1="0" y1="82" x2="360" y2="82" stroke="#22d3ee" stroke-width="2" />
+          </svg>
+          <p class="title-desc">
+            Containment breach confirmed in Sub-Level 4. Communications severed. All research personnel unaccounted for.
+            Navigate interconnected sectors, solve facility lockdown overrides, manage your flashlight power, and avoid Subject 09.
+          </p>
+
+          <div class="title-menu">
+            <button class="btn btn-primary" id="btn-start-game" data-start="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              ENTER FACILITY
+            </button>
+            <button class="btn btn-secondary" id="btn-continue-game" style="display: none;">
+              RESUME PATROL
+            </button>
+            <button class="btn btn-secondary" id="btn-open-settings">
+              SYSTEM SETTINGS
+            </button>
+            <button class="btn btn-secondary" id="btn-open-credits">
+              MISSION BRIEFING
+            </button>
+          </div>
+        </div>
+
+        <div class="title-footer">
+          <span>DESKTOP: WASD Move · Mouse Look · Shift Sprint · C Crouch · F Torch · E Interact</span>
+          <span>ANDROID: Dual Touch On-Screen Controls</span>
+        </div>
+      </div>
+
+      <!-- PAUSE MODAL -->
+      <div class="modal-overlay" id="pause-modal" style="display: none;">
+        <div class="modal-card">
+          <div class="modal-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            SECURITY LOCKDOWN ACTIVE
+          </div>
+          <div class="modal-body">
+            Facility exploration suspended. Review active objectives or adjust sensory settings.
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" id="btn-pause-menu">MAIN MENU</button>
+            <button class="btn btn-secondary" id="btn-pause-restart">RESTART CHECKPOINT</button>
+            <button class="btn btn-primary" id="btn-pause-resume">RESUME EXPEDITION</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- INVENTORY MODAL -->
+      <div class="modal-overlay" id="inventory-modal" style="display: none;">
+        <div class="modal-card">
+          <div class="modal-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+            </svg>
+            SURVIVAL INVENTORY
+          </div>
+          <div class="modal-body">
+            <div class="inventory-grid" id="inventory-items-container">
+              <!-- Dynamically populated -->
+            </div>
+            <div id="inv-item-detail" style="font-size: 11px; color: #94a3b8; min-height: 36px; margin-top: 8px;">
+              Select an item to inspect or use.
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" id="btn-close-inventory">CLOSE (TAB)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- FACILITY MAP MODAL -->
+      <div class="modal-overlay" id="map-modal" style="display: none;">
+        <div class="modal-card" style="max-width: 620px;">
+          <div class="modal-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
+            </svg>
+            FACILITY SCHEMATIC - SUB-LEVEL 4
+          </div>
+          <div class="modal-body">
+            <div class="map-canvas-container">
+              <canvas id="facility-map-canvas"></canvas>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 8px; color: #94a3b8;">
+              <span><span style="color: #22d3ee;">▲</span> Your Location</span>
+              <span><span style="color: #f59e0b;">■</span> Active Objective</span>
+              <span><span style="color: #ef4444;">✕</span> Locked Security Door</span>
+              <span><span style="color: #10b981;">●</span> Hiding Locker</span>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" id="btn-close-map">CLOSE MAP (M)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- DOCUMENT READER MODAL -->
+      <div class="modal-overlay" id="document-modal" style="display: none;">
+        <div class="modal-card" style="max-width: 580px;">
+          <div class="modal-title" id="doc-modal-title">CLASSIFIED LOG ENTRY</div>
+          <div class="modal-body">
+            <div class="doc-paper" id="doc-modal-content"></div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-primary" id="btn-close-document">DISMISS LOG</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SETTINGS MODAL -->
+      <div class="modal-overlay" id="settings-modal" style="display: none;">
+        <div class="modal-card">
+          <div class="modal-title">FACILITY CALIBRATION</div>
+          <div class="modal-body">
+            <div class="settings-row">
+              <span class="settings-label">Graphics Quality</span>
+              <select id="setting-graphics">
+                <option value="high">High (Shadows & Particles)</option>
+                <option value="medium" selected>Medium (Standard PBR)</option>
+                <option value="low">Low (Optimized Mobile)</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <span class="settings-label">Audio Synth Volume</span>
+              <input type="range" id="setting-volume" min="0" max="1" step="0.05" value="0.75" />
+            </div>
+            <div class="settings-row">
+              <span class="settings-label">Mouse / Touch Sensitivity</span>
+              <input type="range" id="setting-sensitivity" min="0.5" max="2.5" step="0.1" value="1.0" />
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-primary" id="btn-close-settings">SAVE & CLOSE</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- CREDITS / BRIEFING MODAL -->
+      <div class="modal-overlay" id="credits-modal" style="display: none;">
+        <div class="modal-card">
+          <div class="modal-title">INCIDENT BACKGROUND</div>
+          <div class="modal-body">
+            <p style="margin-bottom: 10px;">
+              <strong>Facility 84</strong> was established under black budget authorization for biological anomaly preservation.
+              On November 6, quarantine containment collapsed after a cascade power failure in Sector 4.
+            </p>
+            <p style="margin-bottom: 10px;">
+              <strong>Subject 09:</strong> Extremely reactive to sound and light. Sprinting footsteps or flashlight beams alert it instantly.
+              Use lockers to break line of sight.
+            </p>
+            <p>
+              Developed using WebGL, Three.js, Web Audio API, and procedural architecture.
+            </p>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-primary" id="btn-close-credits">RETURN</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- GAME OVER MODAL -->
+      <div class="modal-overlay" id="gameover-modal" style="display: none;">
+        <div class="modal-card" style="border-color: var(--color-danger); text-align: center;">
+          <div class="modal-title" style="color: var(--color-danger); justify-content: center;">
+            SUBJECT COMPROMISED
+          </div>
+          <div class="modal-body">
+            <p style="font-size: 14px; color: #fca5a5; margin-bottom: 12px;" id="gameover-cause">
+              You were caught by Subject 09 in the dark corridors.
+            </p>
+            <div style="background: rgba(0,0,0,0.5); padding: 12px; border-radius: 4px; font-size: 12px;">
+              <div>Exploration Time: <span id="gameover-time" style="color: #fff; font-weight: 700;">02:45</span></div>
+              <div>Objectives Completed: <span id="gameover-objectives" style="color: var(--color-accent); font-weight: 700;">2 / 5</span></div>
+            </div>
+          </div>
+          <div class="modal-actions" style="justify-content: center;">
+            <button class="btn btn-secondary" id="btn-gameover-menu">MAIN MENU</button>
+            <button class="btn btn-danger" id="btn-gameover-retry" data-start="true">RETRY CHECKPOINT</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- VICTORY MODAL -->
+      <div class="modal-overlay" id="victory-modal" style="display: none;">
+        <div class="modal-card" style="border-color: var(--color-success); text-align: center;">
+          <div class="modal-title" style="color: var(--color-success); justify-content: center;">
+            SURFACE EVACUATION SUCCESSFUL
+          </div>
+          <div class="modal-body">
+            <p style="font-size: 14px; color: #86efac; margin-bottom: 12px;">
+              Emergency airlock sealed behind you. You successfully escaped Facility 84.
+            </p>
+            <div style="background: rgba(0,0,0,0.5); padding: 12px; border-radius: 4px; font-size: 12px; line-height: 1.8;">
+              <div>Escape Time: <span id="victory-time" style="color: #fff; font-weight: 700;">--:--</span></div>
+              <div>Classified Logs Recovered: <span id="victory-logs" style="color: var(--color-accent); font-weight: 700;">4 / 4</span></div>
+              <div>Survival Grade: <span style="color: #fbbf24; font-weight: 700;">ALPHA RECALL</span></div>
+            </div>
+          </div>
+          <div class="modal-actions" style="justify-content: center;">
+            <button class="btn btn-primary" id="btn-victory-restart" data-start="true">PLAY AGAIN</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN GAME SCRIPT (THREE.JS + HORROR ENGINE + AUDIO + AI) -->
+    <script>
+      (function() {
+        'use strict';
+
+        // --- Software WebGL Probe ---
+        const isSoftwareGl = (() => {
+          try {
+            const gl = document.createElement('canvas').getContext('webgl2') || document.createElement('canvas').getContext('webgl');
+            if (!gl) return true;
+            const ext = gl.getExtension('WEBGL_debug_renderer_info');
+            const param = ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER;
+            const gpu = String(gl.getParameter(param));
+            gl.getExtension('WEBGL_lose_context')?.loseContext();
+            return /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i.test(gpu);
+          } catch(e) {
+            return true;
+          }
+        })();
+
+        // --- AUDIO SYNTHESIS ENGINE (Web Audio API) ---
+        class HorrorAudioEngine {
+          constructor() {
+            this.ctx = null;
+            this.masterGain = null;
+            this.ambientHum = null;
+            this.ambientGain = null;
+            this.heartbeatOsc = null;
+            this.heartbeatGain = null;
+            this.chaseGain = null;
+            this.muted = false;
+            this.volume = 0.75;
+            this.heartbeatActive = false;
+            this.initialized = false;
+          }
+
+          init() {
+            if (this.initialized) return;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            this.ctx = new AudioContext();
+            this.masterGain = this.ctx.createGain();
+            this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
+            this.masterGain.connect(this.ctx.destination);
+
+            // Ambient Industrial Low Drone
+            this.ambientGain = this.ctx.createGain();
+            this.ambientGain.gain.setValueAtTime(0.18, this.ctx.currentTime);
+            this.ambientGain.connect(this.masterGain);
+
+            const osc1 = this.ctx.createOscillator();
+            osc1.type = 'sawtooth';
+            osc1.frequency.setValueAtTime(46, this.ctx.currentTime);
+            const filter1 = this.ctx.createBiquadFilter();
+            filter1.type = 'lowpass';
+            filter1.frequency.setValueAtTime(95, this.ctx.currentTime);
+            osc1.connect(filter1);
+            filter1.connect(this.ambientGain);
+            osc1.start();
+
+            // Heartbeat system
+            this.heartbeatGain = this.ctx.createGain();
+            this.heartbeatGain.gain.setValueAtTime(0, this.ctx.currentTime);
+            this.heartbeatGain.connect(this.masterGain);
+
+            this.initialized = true;
+          }
+
+          setVolume(v) {
+            this.volume = v;
+            if (this.masterGain && this.ctx) {
+              this.masterGain.gain.setValueAtTime(this.muted ? 0 : v, this.ctx.currentTime);
+            }
+          }
+
+          playFootstep(isSprinting, isCrouching) {
+            if (!this.ctx || this.muted) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            const filter = this.ctx.createBiquadFilter();
+
+            osc.type = 'triangle';
+            const baseFreq = isCrouching ? 65 : (isSprinting ? 95 : 80);
+            osc.frequency.setValueAtTime(baseFreq + (Math.random() * 12 - 6), now);
+            osc.frequency.exponentialRampToValueAtTime(25, now + 0.12);
+
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(160, now);
+
+            const vol = isCrouching ? 0.08 : (isSprinting ? 0.28 : 0.18);
+            gain.gain.setValueAtTime(vol, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.masterGain);
+
+            osc.start(now);
+            osc.stop(now + 0.15);
+          }
+
+          playFlashlightClick() {
+            if (!this.ctx || this.muted) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(1400, now);
+            osc.frequency.exponentialRampToValueAtTime(200, now + 0.04);
+            gain.gain.setValueAtTime(0.2, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+            osc.connect(gain);
+            gain.connect(this.masterGain);
+            osc.start(now);
+            osc.stop(now + 0.06);
+          }
+
+          playDoorSound(opening) {
+            if (!this.ctx || this.muted) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sawtooth';
+            const fStart = opening ? 110 : 80;
+            const fEnd = opening ? 60 : 40;
+            osc.frequency.setValueAtTime(fStart, now);
+            osc.frequency.linearRampToValueAtTime(fEnd, now + 0.4);
+            gain.gain.setValueAtTime(0.22, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+            osc.connect(gain);
+            gain.connect(this.masterGain);
+            osc.start(now);
+            osc.stop(now + 0.46);
+          }
+
+          playKeycardBeep(granted) {
+            if (!this.ctx || this.muted) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            if (granted) {
+              osc.frequency.setValueAtTime(1100, now);
+              osc.frequency.setValueAtTime(1600, now + 0.1);
+              gain.gain.setValueAtTime(0.2, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+            } else {
+              osc.frequency.setValueAtTime(220, now);
+              gain.gain.setValueAtTime(0.3, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+            }
+            osc.connect(gain);
+            gain.connect(this.masterGain);
+            osc.start(now);
+            osc.stop(now + 0.3);
+          }
+
+          playChaseStinger() {
+            if (!this.ctx || this.muted) return;
+            const now = this.ctx.currentTime;
+            const osc1 = this.ctx.createOscillator();
+            const osc2 = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc1.type = 'sawtooth';
+            osc1.frequency.setValueAtTime(320, now);
+            osc1.frequency.exponentialRampToValueAtTime(900, now + 0.6);
+
+            osc2.type = 'sawtooth';
+            osc2.frequency.setValueAtTime(328, now);
+            osc2.frequency.exponentialRampToValueAtTime(915, now + 0.6);
+
+            gain.gain.setValueAtTime(0.35, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+
+            osc1.connect(gain);
+            osc2.connect(gain);
+            gain.connect(this.masterGain);
+
+            osc1.start(now);
+            osc2.start(now);
+            osc1.stop(now + 0.95);
+            osc2.stop(now + 0.95);
+          }
+
+          playMonsterGrowl() {
+            if (!this.ctx || this.muted) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const filter = this.ctx.createBiquadFilter();
+            const gain = this.ctx.createGain();
+
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(65, now);
+            osc.frequency.linearRampToValueAtTime(45, now + 0.8);
+
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(140, now);
+
+            gain.gain.setValueAtTime(0.25, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.masterGain);
+
+            osc.start(now);
+            osc.stop(now + 0.9);
+          }
+
+          updateHeartbeat(active, rate) {
+            if (!this.ctx || this.muted) return;
+            if (active && !this.heartbeatActive) {
+              this.heartbeatActive = true;
+              this.triggerHeartbeatBeat();
+            } else if (!active) {
+              this.heartbeatActive = false;
+            }
+          }
+
+          triggerHeartbeatBeat() {
+            if (!this.heartbeatActive || !this.ctx || this.muted) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(55, now);
+            osc.frequency.exponentialRampToValueAtTime(30, now + 0.16);
+            gain.gain.setValueAtTime(0.4, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+            osc.connect(gain);
+            gain.connect(this.masterGain);
+            osc.start(now);
+            osc.stop(now + 0.22);
+
+            setTimeout(() => {
+              if (this.heartbeatActive) this.triggerHeartbeatBeat();
+            }, 850);
+          }
+        }
+
+        const audio = new HorrorAudioEngine();
+
+        // --- GAME STATE ---
+        const GAME = {
+          state: 'title', // 'title', 'playing', 'paused', 'inventory', 'map', 'document', 'gameover', 'victory'
+          sector: 'Sector 1: Reception & Administration',
+          player: {
+            x: 0,
+            y: 1.6,
+            z: 0,
+            yaw: 0,
+            pitch: 0,
+            vx: 0,
+            vz: 0,
+            health: 100,
+            maxHealth: 100,
+            stamina: 100,
+            maxStamina: 100,
+            battery: 100,
+            maxBattery: 100,
+            flashlightOn: true,
+            isSprinting: false,
+            isCrouching: false,
+            isHiding: false,
+            hidingLockerRef: null,
+            isDead: false
+          },
+          inventory: [
+            { id: 'doc_incident_01', name: 'Log #01: Incident Alpha', type: 'document', count: 1, desc: 'Memo detailing containment failure in Sub-Level 4.' }
+          ],
+          facility: {
+            hasKeycardAlpha: false,
+            hasKeycardOmega: false,
+            generatorSwitches: [false, false, false, false],
+            generatorStep: 0,
+            generatorSequence: [2, 0, 3, 1],
+            generatorActive: false,
+            containmentPurged: false,
+            airlockUnlocked: false,
+            escaped: false,
+            visitedSectors: new Set(['Sector 1: Reception & Administration']),
+            objectiveIdx: 0,
+            objectives: [
+              { id: 'obj1', text: 'Search Reception desk for Security Keycard Alpha.' },
+              { id: 'obj2', text: 'Unlock Sector 2 Security Door with Keycard Alpha.' },
+              { id: 'obj3', text: 'Reach Sector 4 Generator Room and restore auxiliary power.' },
+              { id: 'obj4', text: 'Explore Sector 5 Medical Ward to retrieve Keycard Omega.' },
+              { id: 'obj5', text: 'Proceed to Sector 6 Airlock and trigger Surface Evacuation.' }
+            ]
+          },
+          monster: {
+            mesh: null,
+            eyeLight: null,
+            x: 0,
+            y: 0,
+            z: 48,
+            targetX: 0,
+            targetZ: 48,
+            state: 'patrol', // 'idle', 'patrol', 'investigate', 'chase', 'attack', 'search'
+            patrolWaypoints: [
+              { x: 0, z: 25 },
+              { x: 22, z: 38 },
+              { x: -25, z: 42 },
+              { x: -28, z: 75 },
+              { x: 25, z: 80 }
+            ],
+            currentWaypoint: 0,
+            alertTimer: 0,
+            searchTimer: 0,
+            patrolSpeed: 2.2,
+            chaseSpeed: 5.6,
+            limbAngle: 0,
+            damageCooldown: 0
+          },
+          settings: {
+            graphics: 'medium',
+            volume: 0.75,
+            sensitivity: 1.0
+          },
+          colliders: [],
+          interactables: [],
+          doors: [],
+          lockers: [],
+          timeSurvived: 0,
+          startTime: 0
+        };
+
+        // --- THREE.JS SCENE SETUP ---
+        const canvas = document.getElementById('webgl-canvas');
+        const renderer = new THREE.WebGLRenderer({
+          canvas: canvas,
+          antialias: !isSoftwareGl,
+          powerPreference: 'high-performance'
+        });
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.05;
+        renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = !isSoftwareGl;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x05070a, 0.045);
+
+        const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 120);
+        camera.position.set(0, 1.6, 0);
+
+        // Resize handler
+        function handleResize() {
+          const w = window.innerWidth;
+          const h = window.innerHeight;
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+          renderer.setSize(w, h);
+        }
+        window.addEventListener('resize', handleResize);
+        handleResize();
+
+        // --- PROCEDURAL TEXTURES (Zero 404 dependencies) ---
+        function createNoiseTexture(colorBase, colorNoise, size = 256) {
+          const cvs = document.createElement('canvas');
+          cvs.width = size;
+          cvs.height = size;
+          const ctx = cvs.getContext('2d');
+          ctx.fillStyle = colorBase;
+          ctx.fillRect(0, 0, size, size);
+
+          const imgData = ctx.getImageData(0, 0, size, size);
+          const data = imgData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            const noise = (Math.random() - 0.5) * 35;
+            data[i] = Math.min(255, Math.max(0, data[i] + noise));
+            data[i+1] = Math.min(255, Math.max(0, data[i+1] + noise));
+            data[i+2] = Math.min(255, Math.max(0, data[i+2] + noise));
+          }
+          ctx.putImageData(imgData, 0, 0);
+
+          const tex = new THREE.CanvasTexture(cvs);
+          tex.wrapS = THREE.RepeatWrapping;
+          tex.wrapT = THREE.RepeatWrapping;
+          tex.colorSpace = THREE.SRGBColorSpace;
+          return tex;
+        }
+
+        const concreteFloorTex = createNoiseTexture('#181e24', '#0d1115');
+        concreteFloorTex.repeat.set(16, 16);
+
+        const concreteWallTex = createNoiseTexture('#222831', '#14171d');
+        concreteWallTex.repeat.set(4, 2);
+
+        const metalPanelTex = createNoiseTexture('#2d3748', '#1a202c');
+        metalPanelTex.repeat.set(2, 2);
+
+        // Procedural Materials
+        const floorMat = new THREE.MeshStandardMaterial({
+          map: concreteFloorTex,
+          roughness: 0.85,
+          metalness: 0.15
+        });
+
+        const wallMat = new THREE.MeshStandardMaterial({
+          map: concreteWallTex,
+          roughness: 0.9,
+          metalness: 0.1
+        });
+
+        const ceilingMat = new THREE.MeshStandardMaterial({
+          color: 0x11161d,
+          roughness: 0.95,
+          metalness: 0.05
+        });
+
+        const metalMat = new THREE.MeshStandardMaterial({
+          map: metalPanelTex,
+          roughness: 0.35,
+          metalness: 0.8
+        });
+
+        const doorMat = new THREE.MeshStandardMaterial({
+          color: 0x2b3846,
+          roughness: 0.45,
+          metalness: 0.75
+        });
+
+        const bloodMat = new THREE.MeshStandardMaterial({
+          color: 0x5a0b0b,
+          roughness: 0.3,
+          metalness: 0.1,
+          transparent: true,
+          opacity: 0.85
+        });
+
+        // --- LIGHTING RIG ---
+        // Subtle ambient fill
+        const hemiLight = new THREE.HemisphereLight(0x1e293b, 0x07090b, 0.25);
+        scene.add(hemiLight);
+
+        // Flashlight Rig mounted to Camera
+        const flashlight = new THREE.SpotLight(0xffeedd, 3.8, 28, Math.PI / 5.2, 0.45, 1.2);
+        flashlight.position.set(0.18, -0.15, 0.1);
+        flashlight.target.position.set(0, 0, -5);
+        camera.add(flashlight);
+        camera.add(flashlight.target);
+
+        // Subtle forward glow point light for immediate surroundings
+        const flashlightGlow = new THREE.PointLight(0xfff5e6, 0.7, 5);
+        flashlightGlow.position.set(0, 0, 0);
+        camera.add(flashlightGlow);
+        scene.add(camera);
+
+        // Emergency flickering lights in sectors
+        const sectorLights = [];
+        function createFlickerLight(x, y, z, color, intensity, dist) {
+          const pl = new THREE.PointLight(color, intensity, dist);
+          pl.position.set(x, y, z);
+          if (!isSoftwareGl) {
+            pl.castShadow = true;
+            pl.shadow.bias = -0.002;
+          }
+
+          // Fixture housing
+          const fixGroup = new THREE.Group();
+          const fixture = new THREE.Mesh(
+            new THREE.BoxGeometry(0.8, 0.15, 0.3),
+            metalMat
+          );
+          fixture.position.set(x, y + 0.1, z);
+          fixGroup.add(fixture);
+
+          const bulb = new THREE.Mesh(
+            new THREE.BoxGeometry(0.6, 0.08, 0.15),
+            new THREE.MeshBasicMaterial({ color: color })
+          );
+          bulb.position.set(x, y + 0.02, z);
+          fixGroup.add(bulb);
+
+          scene.add(fixGroup);
+          scene.add(pl);
+          sectorLights.push({ light: pl, baseIntensity: intensity, bulbMat: bulb.material });
+          return pl;
+        }
+
+        // Sector Lights placement
+        createFlickerLight(0, 3.4, 0, 0x93c5fd, 1.2, 16);     // Reception
+        createFlickerLight(0, 3.4, 25, 0xef4444, 2.0, 18);    // Security Corridor (Emergency Red)
+        createFlickerLight(25, 3.4, 40, 0x34d399, 1.8, 20);   // Bio Lab (Eerie Greenish-Teal)
+        createFlickerLight(-25, 3.4, 40, 0xf59e0b, 1.6, 20);  // Generator (Amber Industrial)
+        createFlickerLight(-25, 3.4, 75, 0x60a5fa, 1.4, 20);  // Medical Ward
+        createFlickerLight(25, 3.4, 80, 0x38bdf8, 2.2, 22);   // Evacuation Airlock
+
+        // --- WORLD GENERATION: MULTI-SECTOR FACILITY ---
+        function addWall(x, z, w, d, h = 3.6, rotY = 0) {
+          const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
+          mesh.position.set(x, h / 2, z);
+          mesh.rotation.y = rotY;
+          if (!isSoftwareGl) {
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+          }
+          scene.add(mesh);
+
+          // Register collision AABB
+          const halfW = w / 2;
+          const halfD = d / 2;
+          GAME.colliders.push({
+            minX: x - halfW,
+            maxX: x + halfW,
+            minZ: z - halfD,
+            maxZ: z + halfD
+          });
+          return mesh;
+        }
+
+        function buildFacility() {
+          // Floor and Ceiling
+          const floor = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), floorMat);
+          floor.rotation.x = -Math.PI / 2;
+          floor.position.set(0, 0, 45);
+          floor.receiveShadow = true;
+          scene.add(floor);
+
+          const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(160, 160), ceilingMat);
+          ceiling.rotation.x = Math.PI / 2;
+          ceiling.position.set(0, 3.6, 45);
+          scene.add(ceiling);
+
+          // --- SECTOR 1: RECEPTION & ADMINISTRATION (z: -12 to 15, x: -15 to 15) ---
+          addWall(0, -12, 30, 0.8);   // South outer wall
+          addWall(-15, 0, 0.8, 24);   // West outer wall
+          addWall(15, 0, 0.8, 24);    // East outer wall
+
+          // Partition with doorway to corridor
+          addWall(-9, 12, 12, 0.8);
+          addWall(9, 12, 12, 0.8);
+
+          // Reception Counter Desk
+          const desk = new THREE.Mesh(new THREE.BoxGeometry(6, 1.1, 1.4), metalMat);
+          desk.position.set(0, 0.55, -2);
+          scene.add(desk);
+          GAME.colliders.push({ minX: -3.2, maxX: 3.2, minZ: -3.0, maxZ: -1.0 });
+
+          // Terminal & Keycard Alpha on Reception desk
+          createInteractiveObject(
+            0.8, 1.15, -2,
+            'item_keycard_alpha',
+            'TAKE KEYCARD ALPHA',
+            'Keycard Alpha',
+            'Grants access through Sector 2 Security Checkpoint.',
+            0x22d3ee
+          );
+
+          createInteractiveObject(
+            -1.2, 1.15, -2,
+            'terminal_reception',
+            'READ INCIDENT LOG #01',
+            'Terminal Log',
+            'INCIDENT LOG #01 - FACILITY LOCKDOWN\n\nAt 03:14 hours, Bio-Anomaly Subject 09 breached primary glass containment. Auxiliary security doors sealed automatically. Personnel in Sector 4 attempted a manual power reboot. If reading this, take Keycard Alpha to Sector 2 security gate.',
+            0xffffff
+          );
+
+          // Lockers in Sector 1 (Hiding spots)
+          createLocker(-13.5, -6, 0);
+          createLocker(-13.5, -3, 0);
+
+          // --- SECTOR 2: SECURITY CORRIDOR (z: 12 to 32, x: -4 to 4) ---
+          addWall(-4.5, 22, 0.8, 20);
+          addWall(4.5, 22, 0.8, 20);
+
+          // Sector 2 Reinforced Door (Keycard Alpha Door)
+          createDoor(0, 20, 'door_security_alpha', 'keycard_alpha', 'SECURITY GATE ALPHA (Keycard Alpha Required)');
+
+          // Blood Decal on wall
+          const blood = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.4), bloodMat);
+          blood.position.set(-4.08, 1.4, 24);
+          blood.rotation.y = Math.PI / 2;
+          scene.add(blood);
+
+          // Battery Pickup in corridor corner
+          createInteractiveObject(
+            3.5, 0.3, 27,
+            'item_battery',
+            'PICKUP TORCH BATTERY',
+            'Torch Battery',
+            'High-capacity lithium cell (+50% flashlight power).',
+            0xfbbf24
+          );
+
+          // --- CROSSWAY JUNCTION (z: 32 to 48, x: -35 to 35) ---
+          // Leads East to Sector 3 (Bio Lab), West to Sector 4 (Generator), North to Sector 5 & 6
+          addWall(0, 48, 8, 0.8); // Divider block
+          addWall(-10, 32, 12, 0.8);
+          addWall(10, 32, 12, 0.8);
+
+          // --- SECTOR 3: RESEARCH LAB & BIO CONTAINMENT (x: 10 to 40, z: 32 to 58) ---
+          addWall(40, 45, 0.8, 26);
+          addWall(25, 58, 30, 0.8);
+
+          // Central Bio Containment Pod (Subject 09's broken cage!)
+          const podBase = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 0.4, 16), metalMat);
+          podBase.position.set(25, 0.2, 45);
+          scene.add(podBase);
+          const podGlass = new THREE.Mesh(
+            new THREE.CylinderGeometry(2.1, 2.1, 2.8, 16, 1, true),
+            new THREE.MeshStandardMaterial({ color: 0x34d399, transparent: true, opacity: 0.35, roughness: 0.1 })
+          );
+          podGlass.position.set(25, 1.8, 45);
+          scene.add(podGlass);
+          GAME.colliders.push({ minX: 22.5, maxX: 27.5, minZ: 42.5, maxZ: 47.5 });
+
+          // Lab Notes Terminal
+          createInteractiveObject(
+            15, 1.1, 55,
+            'terminal_lab_notes',
+            'ACCESS SUBJECT 09 DOSSIER',
+            'Bio Dossier',
+            'PROJECT LOOP RECALL - SUBJECT 09\n\nSubject demonstrates hyper-sensitive auditory and photosensory hunting reflexes. Standard ballistic firearms proved completely ineffective. Hiding in enclosed lockers breaks line-of-sight tracking. Subject cannot operate heavy airlock bulkheads when locked.',
+            0x34d399
+          );
+
+          createLocker(38.5, 36, -Math.PI / 2);
+          createLocker(38.5, 40, -Math.PI / 2);
+
+          // Medical kit pickup in lab
+          createInteractiveObject(
+            37, 0.3, 54,
+            'item_medkit',
+            'COLLECT MEDICAL SYRINGE',
+            'Medical Kit',
+            'Sterile coagulant syringe (+40 Vitality).',
+            0xef4444
+          );
+
+          // --- SECTOR 4: MAINTENANCE & GENERATOR ROOM (x: -40 to -10, z: 32 to 58) ---
+          addWall(-40, 45, 0.8, 26);
+          addWall(-25, 58, 30, 0.8);
+
+          // Generator Console Rack
+          const genConsole = new THREE.Mesh(new THREE.BoxGeometry(8, 2.0, 1.2), metalMat);
+          genConsole.position.set(-25, 1.0, 56.5);
+          scene.add(genConsole);
+          GAME.colliders.push({ minX: -29.5, maxX: -20.5, minZ: 55.5, maxZ: 57.5 });
+
+          // 4 Interactive Generator Switches
+          for (let i = 0; i < 4; i++) {
+            const sx = -28 + i * 2.0;
+            createInteractiveObject(
+              sx, 1.3, 55.7,
+              `switch_gen_${i}`,
+              `FLIP BREAKER #${i+1}`,
+              `Breaker #${i+1}`,
+              `Industrial breaker switch for sub-station relay ${i+1}.`,
+              0xf59e0b,
+              i
+            );
+          }
+
+          // Maintenance Instruction Note
+          createInteractiveObject(
+            -38, 1.4, 45,
+            'doc_gen_manual',
+            'READ GENERATOR MANUAL',
+            'Maintenance Manual',
+            'GENERATOR RESTORATION PROTOCOL:\n\nAuxiliary relays must be powered in sequence to prevent surge detonation:\nSequence: Breaker #3 -> Breaker #1 -> Breaker #4 -> Breaker #2 (Indices: 3, 1, 4, 2).\nRestoring power energizes Sector 5 Medical Ward and the final Sector 6 Evacuation Airlock.',
+            0xf59e0b
+          );
+
+          // --- SECTOR 5: MEDICAL WING & ISOLATION (x: -40 to -10, z: 62 to 92) ---
+          addWall(-40, 77, 0.8, 30);
+          addWall(-10, 77, 0.8, 30);
+          addWall(-25, 92, 30, 0.8);
+
+          // Sector 5 entrance door (requires generator power!)
+          createDoor(-25, 62, 'door_medical_power', 'power_required', 'MEDICAL WING BULKHEAD (Auxiliary Power Required)');
+
+          // Medical Wing beds / lockers
+          createLocker(-38.5, 70, -Math.PI / 2);
+          createLocker(-38.5, 74, -Math.PI / 2);
+
+          // Doctor's Desk with Keycard Omega
+          const medDesk = new THREE.Mesh(new THREE.BoxGeometry(4, 1.1, 1.4), metalMat);
+          medDesk.position.set(-25, 0.55, 88);
+          scene.add(medDesk);
+          GAME.colliders.push({ minX: -27.2, maxX: -22.8, minZ: 87.0, maxZ: 89.0 });
+
+          createInteractiveObject(
+            -25, 1.15, 88,
+            'item_keycard_omega',
+            'TAKE KEYCARD OMEGA',
+            'Keycard Omega',
+            'Master security clearance for Sector 6 Surface Evacuation Airlock.',
+            0x38bdf8
+          );
+
+          // Extra Battery & Medkit in medical wing
+          createInteractiveObject(
+            -32, 0.3, 85,
+            'item_battery',
+            'PICKUP TORCH BATTERY',
+            'Torch Battery',
+            'High-capacity lithium cell (+50% flashlight power).',
+            0xfbbf24
+          );
+
+          createInteractiveObject(
+            -18, 0.3, 85,
+            'item_medkit',
+            'COLLECT MEDICAL SYRINGE',
+            'Medical Kit',
+            'Sterile coagulant syringe (+40 Vitality).',
+            0xef4444
+          );
+
+          // --- SECTOR 6: EVACUATION AIRLOCK & FINAL EXIT (x: 10 to 40, z: 62 to 95) ---
+          addWall(40, 78, 0.8, 32);
+          addWall(10, 78, 0.8, 32);
+          addWall(25, 95, 30, 0.8);
+
+          // Sector 6 Entrance door (requires Keycard Omega AND Power!)
+          createDoor(25, 62, 'door_airlock_omega', 'keycard_omega', 'EVACUATION AIRLOCK (Keycard Omega & Power Required)');
+
+          // Surface Evacuation Elevator / Terminal
+          const escapeElevator = new THREE.Mesh(new THREE.BoxGeometry(6, 3.4, 0.8), doorMat);
+          escapeElevator.position.set(25, 1.7, 94.4);
+          scene.add(escapeElevator);
+
+          createInteractiveObject(
+            25, 1.3, 93.6,
+            'terminal_escape',
+            'INITIATE SURFACE EVACUATION',
+            'Evacuation Terminal',
+            'Surface extraction override. Escape to freedom.',
+            0x10b981
+          );
+
+          // Additional lockers along corridor
+          createLocker(11.5, 48, Math.PI / 2);
+        }
+
+        // --- COMPOSITE PROCEDURAL MONSTER (Subject 09) ---
+        function createMonster() {
+          const monsterGroup = new THREE.Group();
+
+          // Monster skin material
+          const skinMat = new THREE.MeshStandardMaterial({
+            color: 0x161c22,
+            roughness: 0.85,
+            metalness: 0.3
+          });
+
+          const spineMat = new THREE.MeshStandardMaterial({
+            color: 0x2d0b0b,
+            roughness: 0.6,
+            metalness: 0.4
+          });
+
+          // 1. Torso & Twisted Spine (Composite 8-part procedural creature)
+          const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.22, 1.4, 8), skinMat);
+          torso.position.y = 1.6;
+          monsterGroup.add(torso);
+
+          // Segmented ribs
+          for (let r = 0; r < 4; r++) {
+            const rib = new THREE.Mesh(new THREE.TorusGeometry(0.38 - r * 0.03, 0.04, 6, 12, Math.PI), spineMat);
+            rib.rotation.x = Math.PI / 2;
+            rib.position.set(0, 1.8 - r * 0.25, 0.05);
+            monsterGroup.add(rib);
+          }
+
+          // 2. Elongated Head & Glowing Eyes
+          const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.55, 0.5), skinMat);
+          head.position.set(0, 2.5, 0.15);
+          head.rotation.x = 0.2;
+          monsterGroup.add(head);
+
+          const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+          const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+          eyeL.position.set(-0.14, 2.55, 0.38);
+          const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMat);
+          eyeR.position.set(0.14, 2.55, 0.38);
+          monsterGroup.add(eyeL);
+          monsterGroup.add(eyeR);
+
+          // Eerie eye point light
+          const eyeLight = new THREE.PointLight(0xffffff, 1.5, 6);
+          eyeLight.position.set(0, 2.55, 0.45);
+          monsterGroup.add(eyeLight);
+          GAME.monster.eyeLight = eyeLight;
+
+          // 3. Claws and Arms
+          const armGeo = new THREE.CylinderGeometry(0.07, 0.05, 1.1, 6);
+          const leftArm = new THREE.Mesh(armGeo, skinMat);
+          leftArm.position.set(-0.55, 1.5, 0);
+          leftArm.rotation.z = 0.25;
+          monsterGroup.add(leftArm);
+
+          const rightArm = new THREE.Mesh(armGeo, skinMat);
+          rightArm.position.set(0.55, 1.5, 0);
+          rightArm.rotation.z = -0.25;
+          monsterGroup.add(rightArm);
+
+          // 4. Reverse-jointed Legs
+          const legGeo = new THREE.CylinderGeometry(0.09, 0.06, 1.2, 6);
+          const leftLeg = new THREE.Mesh(legGeo, skinMat);
+          leftLeg.position.set(-0.25, 0.6, 0);
+          monsterGroup.add(leftLeg);
+
+          const rightLeg = new THREE.Mesh(legGeo, skinMat);
+          rightLeg.position.set(0.25, 0.6, 0);
+          rightLeg.rotation.z = 0;
+          monsterGroup.add(rightLeg);
+
+          monsterGroup.position.set(GAME.monster.x, 0, GAME.monster.z);
+          scene.add(monsterGroup);
+
+          GAME.monster.mesh = monsterGroup;
+          GAME.monster.leftArm = leftArm;
+          GAME.monster.rightArm = rightArm;
+        }
+
+        // --- INTERACTIVE OBJECTS & DOORS ---
+        function createInteractiveObject(x, y, z, id, prompt, name, content, color, extra = 0) {
+          const group = new THREE.Group();
+          let mesh;
+
+          if (id.startsWith('item_keycard')) {
+            mesh = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.02, 0.22), new THREE.MeshStandardMaterial({ color, roughness: 0.2, metalness: 0.8 }));
+          } else if (id.startsWith('item_battery')) {
+            mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.3, 8), new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.8 }));
+          } else if (id.startsWith('item_medkit')) {
+            mesh = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.25), new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.3 }));
+          } else if (id.startsWith('switch_gen')) {
+            mesh = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.4, 0.15), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.9 }));
+            const lever = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.3), new THREE.MeshBasicMaterial({ color }));
+            lever.position.set(0, 0, 0.1);
+            lever.rotation.x = Math.PI / 4;
+            group.add(lever);
+            group.leverRef = lever;
+          } else {
+            // Terminal / Document
+            mesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.3), metalMat);
+            const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.3), new THREE.MeshBasicMaterial({ color }));
+            screen.position.set(0, 0, 0.16);
+            group.add(screen);
+          }
+
+          group.position.set(x, y, z);
+          group.add(mesh);
+          scene.add(group);
+
+          const itemData = {
+            id,
+            prompt,
+            name,
+            content,
+            color,
+            extra,
+            group,
+            collected: false,
+            radius: 1.8
+          };
+
+          GAME.interactables.push(itemData);
+          return itemData;
+        }
+
+        function createDoor(x, z, id, unlockReq, label) {
+          const doorGroup = new THREE.Group();
+          const frame = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.6, 0.6), metalMat);
+          doorGroup.add(frame);
+
+          const doorPanel = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.2, 0.25), doorMat);
+          doorPanel.position.set(0, 0, 0);
+          doorGroup.add(doorPanel);
+
+          doorGroup.position.set(x, 1.8, z);
+          scene.add(doorGroup);
+
+          // Initial closed door collider
+          const collider = { minX: x - 1.5, maxX: x + 1.5, minZ: z - 0.4, maxZ: z + 0.4 };
+          GAME.colliders.push(collider);
+
+          const doorObj = {
+            id,
+            unlockReq,
+            label,
+            doorGroup,
+            doorPanel,
+            collider,
+            isOpen: false,
+            animProgress: 0,
+            x,
+            z
+          };
+
+          GAME.doors.push(doorObj);
+
+          // Interactive prompt on door
+          GAME.interactables.push({
+            id: 'interact_' + id,
+            prompt: 'OPEN ' + label,
+            name: label,
+            doorRef: doorObj,
+            group: doorGroup,
+            radius: 2.5
+          });
+
+          return doorObj;
+        }
+
+        function createLocker(x, z, rotY) {
+          const lockerGroup = new THREE.Group();
+
+          const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.6, 0.9), metalMat);
+          lockerGroup.add(body);
+
+          const door = new THREE.Mesh(
+            new THREE.BoxGeometry(1.1, 2.5, 0.1),
+            new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.85, roughness: 0.3 })
+          );
+          door.position.set(0, 0, 0.45);
+          lockerGroup.add(door);
+
+          // Vent slits in door
+          for (let s = 0; s < 3; s++) {
+            const slit = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.04), new THREE.MeshBasicMaterial({ color: 0x05070a }));
+            slit.position.set(0, 0.4 - s * 0.15, 0.51);
+            lockerGroup.add(slit);
+          }
+
+          lockerGroup.position.set(x, 1.3, z);
+          lockerGroup.rotation.y = rotY;
+          scene.add(lockerGroup);
+
+          // Collider
+          GAME.colliders.push({ minX: x - 0.7, maxX: x + 0.7, minZ: z - 0.6, maxZ: z + 0.6 });
+
+          const lockerData = {
+            id: 'locker_' + GAME.lockers.length,
+            group: lockerGroup,
+            doorRef: door,
+            x,
+            z,
+            rotY
+          };
+          GAME.lockers.push(lockerData);
+
+          GAME.interactables.push({
+            id: 'interact_locker_' + lockerData.id,
+            prompt: 'HIDE IN LOCKER',
+            name: 'Security Locker',
+            lockerRef: lockerData,
+            group: lockerGroup,
+            radius: 2.2
+          });
+        }
+
+        // Build the game world
+        buildFacility();
+        createMonster();
+
+        // --- INPUT HUB (Desktop + Mobile) ---
+        const keys = {
+          w: false, a: false, s: false, d: false,
+          shift: false, c: false, f: false, e: false
+        };
+
+        let pointerLocked = false;
+        let activeInteractTarget = null;
+
+        // Desktop keyboard listeners
+        window.addEventListener('keydown', (e) => {
+          const k = e.key.toLowerCase();
+          if (k === 'w') keys.w = true;
+          if (k === 'a') keys.a = true;
+          if (k === 's') keys.s = true;
+          if (k === 'd') keys.d = true;
+          if (k === 'shift') keys.shift = true;
+          if (k === 'c') keys.c = !keys.c; // toggle crouch
+          if (k === 'f') toggleFlashlight();
+          if (k === 'e') triggerInteraction();
+          if (k === 'tab' || k === 'i') {
+            e.preventDefault();
+            toggleInventory();
+          }
+          if (k === 'm') {
+            e.preventDefault();
+            toggleMap();
+          }
+          if (k === 'escape' || k === 'p') {
+            if (GAME.state === 'playing') pauseGame();
+            else if (GAME.state === 'paused') resumeGame();
+            else if (GAME.state === 'inventory') closeModals();
+            else if (GAME.state === 'map') closeModals();
+            else if (GAME.state === 'document') closeModals();
+          }
+          if (GAME.state === 'title' && (e.code === 'Space' || e.code === 'Enter')) {
+            startGame();
+          }
+        });
+
+        window.addEventListener('keyup', (e) => {
+          const k = e.key.toLowerCase();
+          if (k === 'w') keys.w = false;
+          if (k === 'a') keys.a = false;
+          if (k === 's') keys.s = false;
+          if (k === 'd') keys.d = false;
+          if (k === 'shift') keys.shift = false;
+        });
+
+        window.addEventListener('blur', () => {
+          keys.w = keys.a = keys.s = keys.d = keys.shift = false;
+        });
+
+        // Pointer Lock for Desktop First-Person Look
+        canvas.addEventListener('click', () => {
+          if (GAME.state === 'playing' && !isMobile()) {
+            canvas.requestPointerLock?.();
+          }
+        });
+
+        document.addEventListener('pointerlockchange', () => {
+          pointerLocked = document.pointerLockElement === canvas;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+          if (!pointerLocked || GAME.state !== 'playing' || GAME.player.isHiding) return;
+          const sens = 0.0022 * GAME.settings.sensitivity;
+          GAME.player.yaw -= e.movementX * sens;
+          GAME.player.pitch -= e.movementY * sens;
+          GAME.player.pitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, GAME.player.pitch));
+        });
+
+        // Helper to detect mobile device
+        function isMobile() {
+          return ('ontouchstart' in window) || navigator.maxTouchPoints > 0 || window.innerWidth < 900;
+        }
+
+        // --- MOBILE TOUCH CONTROLS IMPLEMENTATION ---
+        const joystick = {
+          active: false,
+          baseX: 0,
+          baseY: 0,
+          touchId: null,
+          deltaX: 0,
+          deltaY: 0
+        };
+
+        const lookTouch = {
+          active: false,
+          touchId: null,
+          lastX: 0,
+          lastY: 0
+        };
+
+        const touchJoystickZone = document.getElementById('touch-joystick-zone');
+        const touchJoystickThumb = document.getElementById('touch-joystick-thumb');
+        const touchLookZone = document.getElementById('touch-look-zone');
+
+        touchJoystickZone.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          const t = e.changedTouches[0];
+          joystick.active = true;
+          joystick.touchId = t.identifier;
+          const rect = touchJoystickZone.getBoundingClientRect();
+          joystick.baseX = rect.left + rect.width / 2;
+          joystick.baseY = rect.top + rect.height / 2;
+        }, { passive: false });
+
+        window.addEventListener('touchmove', (e) => {
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            if (joystick.active && t.identifier === joystick.touchId) {
+              const dx = t.clientX - joystick.baseX;
+              const dy = t.clientY - joystick.baseY;
+              const dist = Math.hypot(dx, dy);
+              const maxDist = 45;
+              const clampedDist = Math.min(maxDist, dist);
+              const angle = Math.atan2(dy, dx);
+
+              joystick.deltaX = (Math.cos(angle) * clampedDist) / maxDist;
+              joystick.deltaY = (Math.sin(angle) * clampedDist) / maxDist;
+
+              touchJoystickThumb.style.transform = `translate(${joystick.deltaX * 36}px, ${joystick.deltaY * 36}px)`;
+            }
+
+            if (lookTouch.active && t.identifier === lookTouch.touchId && !GAME.player.isHiding) {
+              const moveX = t.clientX - lookTouch.lastX;
+              const moveY = t.clientY - lookTouch.lastY;
+              lookTouch.lastX = t.clientX;
+              lookTouch.lastY = t.clientY;
+
+              const sens = 0.0035 * GAME.settings.sensitivity;
+              GAME.player.yaw -= moveX * sens;
+              GAME.player.pitch -= moveY * sens;
+              GAME.player.pitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, GAME.player.pitch));
+            }
+          }
+        }, { passive: false });
+
+        window.addEventListener('touchend', (e) => {
+          for (let i = 0; i < e.changedTouches.length; i++) {
+            const t = e.changedTouches[i];
+            if (joystick.active && t.identifier === joystick.touchId) {
+              joystick.active = false;
+              joystick.deltaX = 0;
+              joystick.deltaY = 0;
+              touchJoystickThumb.style.transform = `translate(0px, 0px)`;
+            }
+            if (lookTouch.active && t.identifier === lookTouch.touchId) {
+              lookTouch.active = false;
+            }
+          }
+        });
+
+        touchLookZone.addEventListener('touchstart', (e) => {
+          e.preventDefault();
+          const t = e.changedTouches[0];
+          lookTouch.active = true;
+          lookTouch.touchId = t.identifier;
+          lookTouch.lastX = t.clientX;
+          lookTouch.lastY = t.clientY;
+        }, { passive: false });
+
+        // Mobile Buttons
+        const mBtnFlash = document.getElementById('m-btn-flash');
+        const mBtnInteract = document.getElementById('m-btn-interact');
+        const mBtnSprint = document.getElementById('m-btn-sprint');
+        const mBtnCrouch = document.getElementById('m-btn-crouch');
+
+        mBtnFlash.addEventListener('click', toggleFlashlight);
+        mBtnInteract.addEventListener('click', triggerInteraction);
+        mBtnSprint.addEventListener('touchstart', () => { keys.shift = true; mBtnSprint.classList.add('active'); });
+        mBtnSprint.addEventListener('touchend', () => { keys.shift = false; mBtnSprint.classList.remove('active'); });
+        mBtnCrouch.addEventListener('click', () => {
+          keys.c = !keys.c;
+          mBtnCrouch.classList.toggle('active', keys.c);
+        });
+
+        // --- GAME ACTIONS & INTERACTION LOGIC ---
+        function toggleFlashlight() {
+          if (GAME.player.battery <= 0 || GAME.player.isHiding) return;
+          GAME.player.flashlightOn = !GAME.player.flashlightOn;
+          flashlight.visible = GAME.player.flashlightOn;
+          flashlightGlow.visible = GAME.player.flashlightOn;
+          audio.playFlashlightClick();
+        }
+
+        function triggerInteraction() {
+          if (GAME.player.isHiding) {
+            // Exit locker
+            exitLocker();
+            return;
+          }
+
+          if (!activeInteractTarget) return;
+          const target = activeInteractTarget;
+
+          if (target.id === 'item_keycard_alpha') {
+            GAME.facility.hasKeycardAlpha = true;
+            target.collected = true;
+            target.group.visible = false;
+            audio.playKeycardBeep(true);
+            showSubtitle('SECURITY KEYCARD ALPHA ACQUIRED');
+            addInventoryItem('keycard_alpha', 'Keycard Alpha', 'keycard', 'Sector 2 access credential.');
+            advanceObjective(1);
+          } else if (target.id === 'item_keycard_omega') {
+            GAME.facility.hasKeycardOmega = true;
+            target.collected = true;
+            target.group.visible = false;
+            audio.playKeycardBeep(true);
+            showSubtitle('MASTER KEYCARD OMEGA ACQUIRED');
+            addInventoryItem('keycard_omega', 'Keycard Omega', 'keycard', 'Sector 6 Evacuation access credential.');
+            advanceObjective(4);
+          } else if (target.id === 'item_battery') {
+            GAME.player.battery = Math.min(100, GAME.player.battery + 50);
+            target.collected = true;
+            target.group.visible = false;
+            audio.playFlashlightClick();
+            showSubtitle('TORCH BATTERY RESTORED (+50%)');
+          } else if (target.id === 'item_medkit') {
+            GAME.player.health = Math.min(100, GAME.player.health + 40);
+            target.collected = true;
+            target.group.visible = false;
+            audio.playKeycardBeep(true);
+            showSubtitle('VITALITY STABILIZED (+40%)');
+          } else if (target.id.startsWith('terminal_') || target.id.startsWith('doc_')) {
+            openDocument(target.name, target.content);
+          } else if (target.id.startsWith('switch_gen_')) {
+            handleGeneratorSwitch(target.extra, target.group.leverRef);
+          } else if (target.doorRef) {
+            handleDoorInteraction(target.doorRef);
+          } else if (target.lockerRef) {
+            enterLocker(target.lockerRef);
+          } else if (target.id === 'terminal_escape') {
+            triggerVictory();
+          }
+        }
+
+        function handleGeneratorSwitch(idx, leverMesh) {
+          if (GAME.facility.generatorActive) {
+            showSubtitle('GENERATOR IS ALREADY ONLINE');
+            return;
+          }
+
+          const expected = GAME.facility.generatorSequence[GAME.facility.generatorStep];
+          if (idx === expected) {
+            GAME.facility.generatorStep++;
+            if (leverMesh) leverMesh.rotation.x = -Math.PI / 4;
+            audio.playKeycardBeep(true);
+            showSubtitle(`BREAKER #${idx+1} ENGAGED [${GAME.facility.generatorStep} / 4]`);
+
+            if (GAME.facility.generatorStep >= 4) {
+              GAME.facility.generatorActive = true;
+              showSubtitle('AUXILIARY POWER FULLY RESTORED. SECTOR 5 UNLOCKED.');
+              advanceObjective(3);
+              // Brighten amber lights
+              sectorLights.forEach(sl => {
+                sl.light.intensity *= 1.35;
+              });
+            }
+          } else {
+            // Sequence failure
+            GAME.facility.generatorStep = 0;
+            audio.playKeycardBeep(false);
+            showSubtitle('CIRCUIT TRIP: BREAKER SEQUENCE FAILED. RESETTING ALL RELAYS.');
+          }
+        }
+
+        function handleDoorInteraction(door) {
+          if (door.isOpen) return;
+
+          if (door.unlockReq === 'keycard_alpha' && !GAME.facility.hasKeycardAlpha) {
+            audio.playKeycardBeep(false);
+            showSubtitle('ACCESS DENIED: KEYCARD ALPHA REQUIRED');
+            return;
+          }
+
+          if (door.unlockReq === 'power_required' && !GAME.facility.generatorActive) {
+            audio.playKeycardBeep(false);
+            showSubtitle('LOCKDOWN: AUXILIARY GENERATOR POWER REQUIRED');
+            return;
+          }
+
+          if (door.unlockReq === 'keycard_omega') {
+            if (!GAME.facility.generatorActive || !GAME.facility.hasKeycardOmega) {
+              audio.playKeycardBeep(false);
+              showSubtitle('ACCESS DENIED: KEYCARD OMEGA & POWER REQUIRED');
+              return;
+            }
+          }
+
+          // Open door
+          door.isOpen = true;
+          audio.playDoorSound(true);
+          showSubtitle(`${door.label} OPENED`);
+
+          // Remove door collider
+          const cIdx = GAME.colliders.indexOf(door.collider);
+          if (cIdx !== -1) GAME.colliders.splice(cIdx, 1);
+
+          if (door.id === 'door_security_alpha') {
+            advanceObjective(2);
+          }
+        }
+
+        function enterLocker(locker) {
+          GAME.player.isHiding = true;
+          GAME.player.hidingLockerRef = locker;
+          GAME.player.x = locker.x;
+          GAME.player.z = locker.z;
+          GAME.player.yaw = locker.rotY;
+          GAME.player.flashlightOn = false;
+          flashlight.visible = false;
+          flashlightGlow.visible = false;
+
+          document.getElementById('hiding-banner').style.display = 'block';
+          audio.playDoorSound(false);
+          showSubtitle('CONCEALED IN LOCKER. MONSTER CANNOT SEE YOU.');
+        }
+
+        function exitLocker() {
+          if (!GAME.player.isHiding || !GAME.player.hidingLockerRef) return;
+          const l = GAME.player.hidingLockerRef;
+          // Step in front of locker
+          GAME.player.x = l.x + Math.sin(l.rotY) * 1.2;
+          GAME.player.z = l.z + Math.cos(l.rotY) * 1.2;
+          GAME.player.isHiding = false;
+          GAME.player.hidingLockerRef = null;
+
+          document.getElementById('hiding-banner').style.display = 'none';
+          audio.playDoorSound(true);
+          showSubtitle('STEPPED OUT OF LOCKER');
+        }
+
+        function advanceObjective(stepNum) {
+          if (stepNum > GAME.facility.objectiveIdx) {
+            GAME.facility.objectiveIdx = stepNum;
+            const obj = GAME.facility.objectives[stepNum];
+            if (obj) {
+              document.getElementById('objective-text-display').textContent = obj.text;
+            }
+          }
+        }
+
+        function addInventoryItem(id, name, type, desc) {
+          GAME.inventory.push({ id, name, type, count: 1, desc });
+        }
+
+        function showSubtitle(text) {
+          const box = document.getElementById('subtitle-box');
+          box.textContent = text;
+          box.style.display = 'block';
+          clearTimeout(box._subTimer);
+          box._subTimer = setTimeout(() => {
+            box.style.display = 'none';
+          }, 3500);
+        }
+
+        // --- MODALS & MENUS ---
+        function openDocument(title, content) {
+          document.getElementById('doc-modal-title').textContent = title;
+          document.getElementById('doc-modal-content').textContent = content;
+          document.getElementById('document-modal').style.display = 'flex';
+          GAME.state = 'document';
+          if (document.exitPointerLock) document.exitPointerLock();
+        }
+
+        function toggleInventory() {
+          if (GAME.state === 'playing') {
+            renderInventory();
+            document.getElementById('inventory-modal').style.display = 'flex';
+            GAME.state = 'inventory';
+            if (document.exitPointerLock) document.exitPointerLock();
+          } else if (GAME.state === 'inventory') {
+            closeModals();
+          }
+        }
+
+        function renderInventory() {
+          const container = document.getElementById('inventory-items-container');
+          container.innerHTML = '';
+          GAME.inventory.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'inv-item-card';
+            card.innerHTML = `
+              <div class="inv-item-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                </svg>
+              </div>
+              <div class="inv-item-name">${item.name}</div>
+              <div class="inv-item-count">Qty: ${item.count}</div>
+            `;
+            card.onclick = () => {
+              document.getElementById('inv-item-detail').textContent = item.desc;
+            };
+            container.appendChild(card);
+          });
+        }
+
+        function toggleMap() {
+          if (GAME.state === 'playing') {
+            document.getElementById('map-modal').style.display = 'flex';
+            GAME.state = 'map';
+            if (document.exitPointerLock) document.exitPointerLock();
+            requestAnimationFrame(() => {
+              renderFacilityMap();
+            });
+          } else if (GAME.state === 'map') {
+            closeModals();
+          }
+        }
+
+        function renderFacilityMap() {
+          const mcvs = document.getElementById('facility-map-canvas');
+          if (!mcvs) return;
+          const container = mcvs.parentElement;
+          const w = mcvs.width = (container && container.clientWidth > 50) ? container.clientWidth : 480;
+          const h = mcvs.height = (container && container.clientHeight > 50) ? container.clientHeight : 260;
+          const mctx = mcvs.getContext('2d');
+          if (!mctx) return;
+
+          mctx.fillStyle = '#060a0f';
+          mctx.fillRect(0, 0, w, h);
+
+          // Grid coordinates mapping
+          const scale = Math.min(w / 80, h / 70);
+          const cx = w / 2;
+          const cy = h / 2 - 10;
+
+          function toMap(x, z) {
+            return { x: cx + x * scale, y: cy + (z - 40) * scale };
+          }
+
+          // Draw Sectors
+          mctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+          mctx.lineWidth = 1.5;
+
+          // Sector 1: Reception
+          const s1 = toMap(-14, -10);
+          mctx.strokeRect(s1.x, s1.y, 28 * scale, 22 * scale);
+          mctx.fillStyle = '#64748b';
+          mctx.font = '10px monospace';
+          mctx.fillText('SEC 1: RECEPTION', s1.x + 6, s1.y + 14);
+
+          // Sector 2: Security Corridor
+          const s2 = toMap(-4, 12);
+          mctx.strokeRect(s2.x, s2.y, 8 * scale, 20 * scale);
+          mctx.fillText('SEC 2: CHECKPOINT', s2.x - 30, s2.y + 16 * scale);
+
+          // Sector 3: Bio Lab
+          const s3 = toMap(10, 32);
+          mctx.strokeRect(s3.x, s3.y, 28 * scale, 24 * scale);
+          mctx.fillText('SEC 3: BIO LAB', s3.x + 6, s3.y + 14);
+
+          // Sector 4: Generator
+          const s4 = toMap(-38, 32);
+          mctx.strokeRect(s4.x, s4.y, 28 * scale, 24 * scale);
+          mctx.fillText('SEC 4: GENERATOR', s4.x + 6, s4.y + 14);
+
+          // Sector 5: Medical
+          const s5 = toMap(-38, 62);
+          mctx.strokeRect(s5.x, s5.y, 28 * scale, 28 * scale);
+          mctx.fillText('SEC 5: MEDICAL', s5.x + 6, s5.y + 14);
+
+          // Sector 6: Airlock
+          const s6 = toMap(10, 62);
+          mctx.strokeRect(s6.x, s6.y, 28 * scale, 30 * scale);
+          mctx.fillText('SEC 6: AIRLOCK', s6.x + 6, s6.y + 14);
+
+          // Player indicator
+          const p = toMap(GAME.player.x, GAME.player.z);
+          mctx.fillStyle = '#22d3ee';
+          mctx.beginPath();
+          mctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+          mctx.fill();
+
+          // Player orientation
+          mctx.strokeStyle = '#22d3ee';
+          mctx.lineWidth = 2;
+          mctx.beginPath();
+          mctx.moveTo(p.x, p.y);
+          mctx.lineTo(p.x - Math.sin(GAME.player.yaw) * 12, p.y - Math.cos(GAME.player.yaw) * 12);
+          mctx.stroke();
+
+          // Lockers
+          mctx.fillStyle = '#10b981';
+          GAME.lockers.forEach(l => {
+            const lp = toMap(l.x, l.z);
+            mctx.beginPath();
+            mctx.arc(lp.x, lp.y, 3, 0, Math.PI * 2);
+            mctx.fill();
+          });
+        }
+
+        function pauseGame() {
+          GAME.state = 'paused';
+          document.body.dataset.state = 'paused';
+          document.getElementById('pause-modal').style.display = 'flex';
+          if (document.exitPointerLock) document.exitPointerLock();
+        }
+
+        function resumeGame() {
+          closeModals();
+          GAME.state = 'playing';
+          document.body.dataset.state = 'playing';
+          if (!isMobile()) canvas.requestPointerLock?.();
+        }
+
+        function closeModals() {
+          document.getElementById('pause-modal').style.display = 'none';
+          document.getElementById('inventory-modal').style.display = 'none';
+          document.getElementById('map-modal').style.display = 'none';
+          document.getElementById('document-modal').style.display = 'none';
+          document.getElementById('settings-modal').style.display = 'none';
+          document.getElementById('credits-modal').style.display = 'none';
+          if (GAME.state !== 'gameover' && GAME.state !== 'victory' && GAME.state !== 'title') {
+            GAME.state = 'playing';
+            document.body.dataset.state = 'playing';
+          }
+        }
+
+        function startGame() {
+          audio.init();
+          GAME.state = 'playing';
+          GAME.startTime = performance.now();
+          document.body.dataset.state = 'playing';
+          document.getElementById('title-screen').style.display = 'none';
+          document.getElementById('hud-layer').style.display = 'block';
+
+          if (isMobile()) {
+            document.getElementById('mobile-controls').style.display = 'block';
+          } else {
+            canvas.requestPointerLock?.();
+          }
+
+          showSubtitle('ENTERED SUB-LEVEL 4. PROCEED WITH CAUTION.');
+        }
+
+        function triggerGameOver(reason) {
+          GAME.state = 'gameover';
+          document.body.dataset.state = 'gameover';
+          document.getElementById('gameover-cause').textContent = reason || 'You were caught by Subject 09 in the dark corridors.';
+          const elapsedSec = Math.floor((performance.now() - GAME.startTime) / 1000);
+          const mins = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+          const secs = String(elapsedSec % 60).padStart(2, '0');
+          document.getElementById('gameover-time').textContent = `${mins}:${secs}`;
+          document.getElementById('gameover-objectives').textContent = `${GAME.facility.objectiveIdx} / 5`;
+          document.getElementById('gameover-modal').style.display = 'flex';
+          if (document.exitPointerLock) document.exitPointerLock();
+        }
+
+        function triggerVictory() {
+          GAME.state = 'victory';
+          document.body.dataset.state = 'gameover';
+          const elapsedSec = Math.floor((performance.now() - GAME.startTime) / 1000);
+          const mins = String(Math.floor(elapsedSec / 60)).padStart(2, '0');
+          const secs = String(elapsedSec % 60).padStart(2, '0');
+          document.getElementById('victory-time').textContent = `${mins}:${secs}`;
+          document.getElementById('victory-modal').style.display = 'flex';
+          if (document.exitPointerLock) document.exitPointerLock();
+        }
+
+        // --- BUTTON BINDINGS ---
+        document.getElementById('btn-start-game').addEventListener('click', startGame);
+        document.getElementById('btn-open-settings').addEventListener('click', () => {
+          document.getElementById('settings-modal').style.display = 'flex';
+        });
+        document.getElementById('btn-close-settings').addEventListener('click', () => {
+          document.getElementById('settings-modal').style.display = 'none';
+        });
+        document.getElementById('btn-open-credits').addEventListener('click', () => {
+          document.getElementById('credits-modal').style.display = 'flex';
+        });
+        document.getElementById('btn-close-credits').addEventListener('click', () => {
+          document.getElementById('credits-modal').style.display = 'none';
+        });
+        document.getElementById('btn-close-inventory').addEventListener('click', closeModals);
+        document.getElementById('btn-close-map').addEventListener('click', closeModals);
+        document.getElementById('btn-close-document').addEventListener('click', closeModals);
+        document.getElementById('btn-hud-pause').addEventListener('click', pauseGame);
+        document.getElementById('btn-hud-inventory').addEventListener('click', toggleInventory);
+        document.getElementById('btn-hud-map').addEventListener('click', toggleMap);
+        document.getElementById('btn-pause-resume').addEventListener('click', resumeGame);
+        document.getElementById('btn-pause-restart').addEventListener('click', () => {
+          location.reload();
+        });
+        document.getElementById('btn-pause-menu').addEventListener('click', () => {
+          location.reload();
+        });
+        document.getElementById('btn-gameover-retry').addEventListener('click', () => {
+          location.reload();
+        });
+        document.getElementById('btn-gameover-menu').addEventListener('click', () => {
+          location.reload();
+        });
+        document.getElementById('btn-victory-restart').addEventListener('click', () => {
+          location.reload();
+        });
+
+        // Settings adjustments
+        document.getElementById('setting-volume').addEventListener('input', (e) => {
+          audio.setVolume(parseFloat(e.target.value));
+        });
+        document.getElementById('setting-sensitivity').addEventListener('input', (e) => {
+          GAME.settings.sensitivity = parseFloat(e.target.value);
+        });
+
+        // --- CHECKPOINT / AUTOSTART SUPPORT ---
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('autostart') === '1') {
+          setTimeout(startGame, 100);
+        }
+
+        // --- MAIN SIMULATION & RENDER LOOP ---
+        let lastTime = performance.now();
+        let footstepTimer = 0;
+        let ambientFlickerTimer = 0;
+
+        function tick() {
+          const now = performance.now();
+          const rawDt = (now - lastTime) / 1000;
+          lastTime = now;
+          const dt = Math.min(rawDt, 0.05);
+
+          if (GAME.state === 'playing') {
+            updatePlayerSimulation(dt);
+            updateMonsterSimulation(dt);
+            updateDoorsAnimation(dt);
+            updateAtmosphericEffects(dt);
+          } else if (GAME.state === 'title') {
+            // Live cinematic camera pan on title screen
+            const t = now * 0.00035;
+            camera.position.x = Math.sin(t) * 4;
+            camera.position.z = Math.cos(t) * 4 - 2;
+            camera.position.y = 1.7 + Math.sin(t * 1.5) * 0.15;
+            camera.lookAt(0, 1.4, 10);
+          }
+
+          renderer.render(scene, camera);
+
+          if (isSoftwareGl) {
+            afterDraw(tick);
+          } else {
+            requestAnimationFrame(tick);
+          }
+        }
+
+        // Software WebGL pacing helper from Three.js skill
+        function afterDraw(cb) {
+          const gl = renderer.getContext();
+          if (gl && 'fenceSync' in gl) {
+            const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+            gl.flush();
+            const poll = () => {
+              const state = sync && gl.getSyncParameter(sync, gl.SYNC_STATUS);
+              if (state === gl.UNSIGNALED) {
+                setTimeout(poll, 5);
+              } else {
+                gl.deleteSync(sync);
+                setTimeout(cb, 40);
+              }
+            };
+            setTimeout(poll, 5);
+          } else {
+            setTimeout(cb, 40);
+          }
+        }
+
+        // --- SIMULATION TICK HELPERS ---
+        function updatePlayerSimulation(dt) {
+          const p = GAME.player;
+          if (p.isHiding) return;
+
+          // Input gathering
+          let moveF = 0;
+          let moveS = 0;
+
+          if (keys.w) moveF += 1;
+          if (keys.s) moveF -= 1;
+          if (keys.a) moveS -= 1;
+          if (keys.d) moveS += 1;
+
+          // Mobile Joystick blending
+          if (joystick.active) {
+            moveF -= joystick.deltaY;
+            moveS += joystick.deltaX;
+          }
+
+          const moveMag = Math.hypot(moveF, moveS);
+
+          // Sprint logic
+          const sprintRequested = keys.shift;
+          if (sprintRequested && moveMag > 0.1 && p.stamina > 5 && !p.isCrouching) {
+            p.isSprinting = true;
+            p.stamina = Math.max(0, p.stamina - 24 * dt);
+            if (p.stamina <= 0) p.isSprinting = false;
+          } else {
+            p.isSprinting = false;
+            const regen = p.isCrouching ? 22 : 14;
+            p.stamina = Math.min(p.maxStamina, p.stamina + regen * dt);
+          }
+
+          // Speeds
+          let speed = 3.2;
+          if (p.isSprinting) speed = 6.2;
+          else if (p.isCrouching) speed = 1.8;
+
+          // Target movement direction
+          if (moveMag > 0.05) {
+            const normF = moveF / (moveMag || 1);
+            const normS = moveS / (moveMag || 1);
+
+            const forwardX = -Math.sin(p.yaw);
+            const forwardZ = -Math.cos(p.yaw);
+            const rightX = Math.cos(p.yaw);
+            const rightZ = -Math.sin(p.yaw);
+
+            const targetVx = (forwardX * normF + rightX * normS) * speed;
+            const targetVz = (forwardZ * normF + rightZ * normS) * speed;
+
+            // Exponential acceleration damping
+            p.vx += (targetVx - p.vx) * (1 - Math.exp(-12 * dt));
+            p.vz += (targetVz - p.vz) * (1 - Math.exp(-12 * dt));
+
+            // Footsteps
+            footstepTimer += dt;
+            const stepInterval = p.isSprinting ? 0.28 : (p.isCrouching ? 0.65 : 0.45);
+            if (footstepTimer >= stepInterval) {
+              footstepTimer = 0;
+              audio.playFootstep(p.isSprinting, p.isCrouching);
+            }
+          } else {
+            p.vx *= Math.exp(-15 * dt);
+            p.vz *= Math.exp(-15 * dt);
+          }
+
+          // Move with AABB collision resolution
+          const nextX = p.x + p.vx * dt;
+          const nextZ = p.z + p.vz * dt;
+          const playerRadius = 0.45;
+
+          const resolved = resolvePlayerCollisions(nextX, nextZ, playerRadius);
+          p.x = resolved.x;
+          p.z = resolved.z;
+
+          // Camera height and Crouch bob
+          const targetCamY = p.isCrouching ? 1.0 : 1.6;
+          p.y += (targetCamY - p.y) * (1 - Math.exp(-10 * dt));
+
+          // Camera sway / headbob
+          const bobOffset = (moveMag > 0.05) ? Math.sin(now * 0.012 * (p.isSprinting ? 1.6 : 1.0)) * 0.04 : 0;
+
+          camera.position.set(p.x, p.y + bobOffset, p.z);
+          camera.rotation.order = 'YXZ';
+          camera.rotation.y = p.yaw;
+          camera.rotation.x = p.pitch;
+
+          // Battery drain
+          if (p.flashlightOn) {
+            p.battery = Math.max(0, p.battery - 1.2 * dt);
+            if (p.battery <= 0) {
+              p.flashlightOn = false;
+              flashlight.visible = false;
+              flashlightGlow.visible = false;
+            }
+          }
+
+          // Update HUD readouts
+          document.getElementById('health-bar').style.width = p.health + '%';
+          document.getElementById('health-num').textContent = Math.round(p.health) + '%';
+          document.getElementById('stamina-bar').style.width = p.stamina + '%';
+          document.getElementById('stamina-num').textContent = Math.round(p.stamina) + '%';
+          document.getElementById('battery-bar').style.width = p.battery + '%';
+          document.getElementById('battery-num').textContent = Math.round(p.battery) + '%';
+
+          // Sector detection
+          updateCurrentSectorName();
+
+          // Interaction Raycast from center camera
+          checkInteractionRaycast();
+        }
+
+        function resolvePlayerCollisions(x, z, radius) {
+          let rx = x;
+          let rz = z;
+
+          for (let i = 0; i < GAME.colliders.length; i++) {
+            const b = GAME.colliders[i];
+            const isInsideX = rx >= b.minX && rx <= b.maxX;
+            const isInsideZ = rz >= b.minZ && rz <= b.maxZ;
+
+            if (isInsideX && isInsideZ) {
+              const dMinX = rx - b.minX;
+              const dMaxX = b.maxX - rx;
+              const dMinZ = rz - b.minZ;
+              const dMaxZ = b.maxZ - rz;
+              const minD = Math.min(dMinX, dMaxX, dMinZ, dMaxZ);
+              if (minD === dMinX) rx = b.minX - radius;
+              else if (minD === dMaxX) rx = b.maxX + radius;
+              else if (minD === dMinZ) rz = b.minZ - radius;
+              else rz = b.maxZ + radius;
+              continue;
+            }
+
+            const closestX = Math.max(b.minX, Math.min(rx, b.maxX));
+            const closestZ = Math.max(b.minZ, Math.min(rz, b.maxZ));
+            const dx = rx - closestX;
+            const dz = rz - closestZ;
+            const distSq = dx * dx + dz * dz;
+
+            if (distSq < radius * radius) {
+              const d = Math.sqrt(distSq) || 0.001;
+              const pen = radius - d;
+              rx += (dx / d) * pen;
+              rz += (dz / d) * pen;
+            }
+          }
+
+          return { x: rx, z: rz };
+        }
+
+        function updateCurrentSectorName() {
+          const z = GAME.player.z;
+          const x = GAME.player.x;
+          let sName = 'Sector 1: Reception & Administration';
+
+          if (z >= 12 && z < 32 && Math.abs(x) < 8) {
+            sName = 'Sector 2: Security Checkpoint';
+          } else if (z >= 32 && z < 60 && x > 5) {
+            sName = 'Sector 3: Research Laboratory';
+          } else if (z >= 32 && z < 60 && x < -5) {
+            sName = 'Sector 4: Generator Room';
+          } else if (z >= 60 && x < 0) {
+            sName = 'Sector 5: Medical Wing';
+          } else if (z >= 60 && x >= 0) {
+            sName = 'Sector 6: Evacuation Airlock';
+          }
+
+          if (GAME.sector !== sName) {
+            GAME.sector = sName;
+            document.getElementById('sector-name-display').textContent = sName;
+            GAME.facility.visitedSectors.add(sName);
+          }
+        }
+
+        function checkInteractionRaycast() {
+          const p = GAME.player;
+          const crosshair = document.getElementById('crosshair');
+          const prompt = document.getElementById('interaction-prompt');
+          const actionText = document.getElementById('prompt-action-text');
+
+          let bestTarget = null;
+          let bestDist = 2.4;
+
+          const fX = -Math.sin(p.yaw);
+          const fZ = -Math.cos(p.yaw);
+
+          for (let i = 0; i < GAME.interactables.length; i++) {
+            const item = GAME.interactables[i];
+            if (item.collected) continue;
+
+            const dx = item.group.position.x - p.x;
+            const dz = item.group.position.z - p.z;
+            const dist = Math.hypot(dx, dz);
+
+            if (dist < (item.radius || 2.2)) {
+              // Check angle facing target
+              const dot = (dx * fX + dz * fZ) / dist;
+              if (dot > 0.65 && dist < bestDist) {
+                bestDist = dist;
+                bestTarget = item;
+              }
+            }
+          }
+
+          activeInteractTarget = bestTarget;
+
+          if (bestTarget) {
+            crosshair.classList.add('active');
+            prompt.style.display = 'flex';
+            actionText.textContent = bestTarget.prompt;
+          } else {
+            crosshair.classList.remove('active');
+            prompt.style.display = 'none';
+          }
+        }
+
+        // --- MONSTER AI SIMULATION ---
+        function updateMonsterSimulation(dt) {
+          const m = GAME.monster;
+          const p = GAME.player;
+          if (!m.mesh) return;
+
+          const dx = p.x - m.x;
+          const dz = p.z - m.z;
+          const distToPlayer = Math.hypot(dx, dz);
+
+          // Perception checks
+          let audibleRange = 5.0;
+          if (p.isSprinting) audibleRange = 24.0;
+          else if (p.isCrouching) audibleRange = 2.2;
+
+          let visualRange = 14.0;
+          if (p.flashlightOn) visualRange = 26.0;
+
+          const canHear = distToPlayer < audibleRange && !p.isHiding;
+          const canSee = distToPlayer < visualRange && !p.isHiding;
+
+          // State Machine
+          if (m.state === 'patrol') {
+            if (canSee) {
+              m.state = 'chase';
+              audio.playChaseStinger();
+              showSubtitle('ANOMALY DETECTED: RUN OR HIDE IN A LOCKER!');
+            } else if (canHear) {
+              m.state = 'investigate';
+              m.targetX = p.x;
+              m.targetZ = p.z;
+              m.alertTimer = 6.0;
+              audio.playMonsterGrowl();
+            } else {
+              // Waypoint navigation
+              const wp = m.patrolWaypoints[m.currentWaypoint];
+              const wpDist = Math.hypot(wp.x - m.x, wp.z - m.z);
+              if (wpDist < 1.2) {
+                m.currentWaypoint = (m.currentWaypoint + 1) % m.patrolWaypoints.length;
+              } else {
+                const step = m.patrolSpeed * dt;
+                m.x += ((wp.x - m.x) / wpDist) * step;
+                m.z += ((wp.z - m.z) / wpDist) * step;
+              }
+            }
+          } else if (m.state === 'investigate') {
+            if (canSee) {
+              m.state = 'chase';
+              audio.playChaseStinger();
+            } else {
+              const tDist = Math.hypot(m.targetX - m.x, m.targetZ - m.z);
+              if (tDist > 0.8) {
+                const step = m.patrolSpeed * 1.3 * dt;
+                m.x += ((m.targetX - m.x) / tDist) * step;
+                m.z += ((m.targetZ - m.z) / tDist) * step;
+              }
+              m.alertTimer -= dt;
+              if (m.alertTimer <= 0) {
+                m.state = 'search';
+                m.searchTimer = 5.0;
+              }
+            }
+          } else if (m.state === 'chase') {
+            if (p.isHiding) {
+              m.state = 'search';
+              m.searchTimer = 6.0;
+              showSubtitle('LOST TARGET TRACKING...');
+            } else {
+              m.targetX = p.x;
+              m.targetZ = p.z;
+              const step = m.chaseSpeed * dt;
+              m.x += (dx / (distToPlayer || 1)) * step;
+              m.z += (dz / (distToPlayer || 1)) * step;
+
+              // Attack contact
+              if (distToPlayer < 1.8) {
+                m.damageCooldown -= dt;
+                if (m.damageCooldown <= 0) {
+                  m.damageCooldown = 0.8;
+                  p.health -= 35;
+                  triggerDamageFlash();
+                  audio.playMonsterGrowl();
+                  if (p.health <= 0) {
+                    p.health = 0;
+                    triggerGameOver('You were caught and eradicated by Subject 09.');
+                  }
+                }
+              }
+            }
+          } else if (m.state === 'search') {
+            if (canSee) {
+              m.state = 'chase';
+              audio.playChaseStinger();
+            } else if (canHear) {
+              m.state = 'investigate';
+              m.targetX = p.x;
+              m.targetZ = p.z;
+            } else {
+              m.searchTimer -= dt;
+              if (m.searchTimer <= 0) {
+                m.state = 'patrol';
+              }
+            }
+          }
+
+          // Orient monster mesh towards motion target
+          const rotAngle = Math.atan2(dx, dz);
+          m.mesh.rotation.y = rotAngle;
+          m.mesh.position.set(m.x, 0, m.z);
+
+          // Limb scuttle animation
+          m.limbAngle += dt * (m.state === 'chase' ? 14 : 6);
+          if (m.leftArm && m.rightArm) {
+            m.leftArm.rotation.x = Math.sin(m.limbAngle) * 0.45;
+            m.rightArm.rotation.x = -Math.sin(m.limbAngle) * 0.45;
+          }
+
+          // Audio Heartbeat & Chase screen visual distortion
+          const chaseOverlay = document.getElementById('chase-distortion');
+          if (m.state === 'chase') {
+            chaseOverlay.style.opacity = '1';
+            audio.updateHeartbeat(true, 120);
+          } else if (distToPlayer < 12) {
+            chaseOverlay.style.opacity = '0.35';
+            audio.updateHeartbeat(true, 80);
+          } else {
+            chaseOverlay.style.opacity = '0';
+            audio.updateHeartbeat(p.health < 35, 90);
+          }
+        }
+
+        function triggerDamageFlash() {
+          const flash = document.getElementById('damage-flash');
+          flash.style.opacity = '1';
+          setTimeout(() => {
+            flash.style.opacity = '0';
+          }, 180);
+        }
+
+        function updateDoorsAnimation(dt) {
+          for (let i = 0; i < GAME.doors.length; i++) {
+            const d = GAME.doors[i];
+            if (d.isOpen && d.animProgress < 1.0) {
+              d.animProgress = Math.min(1.0, d.animProgress + dt * 1.5);
+              d.doorPanel.position.y = d.animProgress * 3.2; // Slide door up
+            }
+          }
+        }
+
+        function updateAtmosphericEffects(dt) {
+          ambientFlickerTimer += dt;
+          if (ambientFlickerTimer > 0.08) {
+            ambientFlickerTimer = 0;
+            // Subtle flicker on emergency lights
+            sectorLights.forEach(sl => {
+              if (Math.random() < 0.12) {
+                sl.light.intensity = sl.baseIntensity * (0.2 + Math.random() * 0.8);
+              } else {
+                sl.light.intensity = sl.baseIntensity;
+              }
+            });
+
+            // Flashlight glitch when monster is close or battery is low
+            const glitch = document.getElementById('flashlight-glitch');
+            const dist = Math.hypot(GAME.monster.x - GAME.player.x, GAME.monster.z - GAME.player.z);
+            if (dist < 10 || GAME.player.battery < 20) {
+              if (Math.random() < 0.3) {
+                glitch.style.opacity = '0.6';
+                if (flashlight.visible) flashlight.intensity = Math.random() * 2.0;
+              } else {
+                glitch.style.opacity = '0';
+                if (flashlight.visible) flashlight.intensity = 3.8;
+              }
+            } else {
+              glitch.style.opacity = '0';
+              if (flashlight.visible) flashlight.intensity = 3.8;
+            }
+          }
+        }
+
+        // Start render loop
+        tick();
+
+      })();
+    </script>
+  </body>
+</html>

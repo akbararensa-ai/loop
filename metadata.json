@@ -1,0 +1,6 @@
+{
+  "name": "Loop Recall: The Lost Facility",
+  "description": "A cinematic 3D first-person horror exploration game set in an abandoned underground research facility. Features procedural audio, intelligent monster AI, mobile controls, and immersive storytelling.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
